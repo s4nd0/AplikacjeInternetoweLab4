@@ -2,68 +2,49 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.send('Witaj w aplikacji Express!');
-});
+// a) Własne middleware aplikacyjne z czasem rozpoczęcia obsługi żądania
+const logger = (req, res, next) => {
+  const startTime = new Date().toISOString();
+  console.log(`[${startTime}] ${req.method} ${req.url}`);
+  next();
+};
 
-app.get('/contact', (req, res) => {
-  res.send('Kontakt: kontakt@politechnika.lublin.pl');
-});
+app.use(logger);
 
-app.get('/api/info', (req, res) => {
-  res.json({
-    application: 'Express LAB4',
-    version: '1.0'
-  });
-});
+// b) Włączenie parsowania JSON przed trasami korzystającymi z req.body
+app.use(express.json());
 
-// b) Parametry zapytania - zdefiniowane PRZED /api/users/:id
-app.get('/api/users/search', (req, res) => {
-  const { name, page = 1 } = req.query;
-  if (!name) {
-    return res.status(400).json({ error: 'Parametr name jest wymagany' });
-  }
-  res.status(200).json({ name, page: Number(page) });
-});
+// c) Obsługa danych z formularzy HTML oraz plików statycznych z katalogu public
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static('public'));
 
-// a) Parametry ścieżki
-app.get('/api/users/:id', (req, res) => {
-  const id = Number(req.params.id);
-  if (Number.isNaN(id)) {
-    return res.status(400).json({ error: 'Identyfikator musi być liczbą' });
-  }
-  if (id > 100) {
-    return res.status(404).json({ error: 'Użytkownik nie istnieje' });
-  }
-  res.status(200).json({
-    message: 'Pobrano użytkownika',
-    id: id
-  });
-});
-
-// c) Przykładowe trasy POST, PUT i DELETE z odpowiednimi kodami statusu
+// b) Trasa odbierająca dane JSON
 app.post('/api/users', (req, res) => {
-  res.status(201).json({ message: 'Utworzono nowego użytkownika' });
+  const user = req.body;
+  res.status(201).json(user);
 });
 
-app.put('/api/users/:id', (req, res) => {
-  const id = Number(req.params.id);
-  if (Number.isNaN(id)) {
-    return res.status(400).json({ error: 'Nieprawidłowy format ID' });
-  }
-  if (id > 100) {
-    return res.status(404).json({ error: 'Nie znaleziono użytkownika' });
-  }
-  res.status(200).json({ message: 'Zaktualizowano użytkownika', id });
+// c) Trasa odbierająca dane z formularza HTML
+app.post('/api/users/form', (req, res) => {
+  res.status(201).json({
+    message: 'Odebrano dane z formularza HTML',
+    user: req.body
+  });
 });
 
-app.delete('/api/users/:id', (req, res) => {
-  const id = Number(req.params.id);
-  if (id > 100) {
-    return res.status(404).json({ error: 'Nie znaleziono użytkownika' });
-  }
-  res.status(204).send();
+// c) Router z własnym middleware (router-level middleware)
+const testRouter = express.Router();
+
+testRouter.use((req, res, next) => {
+  console.log('Wykonano middleware przypisane wyłącznie do testRouter');
+  next();
 });
+
+testRouter.get('/status', (req, res) => {
+  res.json({ routerStatus: 'OK' });
+});
+
+app.use('/api/router-test', testRouter);
 
 app.listen(port, () => {
   console.log(`Serwer działa na porcie ${port}`);
