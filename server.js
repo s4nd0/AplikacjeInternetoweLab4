@@ -1,50 +1,98 @@
 const express = require('express');
+const { body, param, validationResult } = require('express-validator');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
-// a) Własne middleware aplikacyjne z czasem rozpoczęcia obsługi żądania
-const logger = (req, res, next) => {
-  const startTime = new Date().toISOString();
-  console.log(`[${startTime}] ${req.method} ${req.url}`);
-  next();
-};
-
-app.use(logger);
-
-// b) Włączenie parsowania JSON przed trasami korzystającymi z req.body
 app.use(express.json());
 
-// c) Obsługa danych z formularzy HTML oraz plików statycznych z katalogu public
-app.use(express.urlencoded({ extended: false }));
-app.use(express.static('public'));
+// a) Początkowa tablica użytkowników w pamięci procesu
+let users = [
+  { id: 1, name: 'Jan Kowalski', email: 'jan@example.com' },
+  { id: 2, name: 'Anna Nowak', email: 'anna@example.com' }
+];
 
-// b) Trasa odbierająca dane JSON
-app.post('/api/users', (req, res) => {
-  const user = req.body;
-  res.status(201).json(user);
+// GET /api/users - lista wszystkich użytkowników
+app.get('/api/users', (req, res) => {
+  res.status(200).json(users);
 });
 
-// c) Trasa odbierająca dane z formularza HTML
-app.post('/api/users/form', (req, res) => {
-  res.status(201).json({
-    message: 'Odebrano dane z formularza HTML',
-    user: req.body
-  });
+// GET /api/users/:id - pojedynczy użytkownik
+app.get('/api/users/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const user = users.find(u => u.id === id);
+
+  if (!user) {
+    return res.status(404).json({ error: 'Użytkownik nie istnieje' });
+  }
+
+  res.status(200).json(user);
 });
 
-// c) Router z własnym middleware (router-level middleware)
-const testRouter = express.Router();
+// POST /api/users - tworzenie użytkownika z walidacją
+app.post(
+  '/api/users',
+  body('name').trim().notEmpty().withMessage('Pole name nie może być puste'),
+  body('email').isEmail().withMessage('Niepoprawny adres email'),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-testRouter.use((req, res, next) => {
-  console.log('Wykonano middleware przypisane wyłącznie do testRouter');
-  next();
+    const nextId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
+    const newUser = {
+      id: nextId,
+      name: req.body.name,
+      email: req.body.email
+    };
+
+    users.push(newUser);
+    res.status(201).json(newUser);
+  }
+);
+
+// PUT /api/users/:id - aktualizacja użytkownika z walidacją parametru :id oraz treści
+app.put(
+  '/api/users/:id',
+  param('id').isInt().withMessage('Parametr id musi być liczbą całkowitą'),
+  body('name').trim().notEmpty().withMessage('Pole name nie może być puste'),
+  body('email').isEmail().withMessage('Niepoprawny adres email'),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const id = Number(req.params.id);
+    const index = users.findIndex(u => u.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Użytkownik nie istnieje' });
+    }
+
+    users[index] = {
+      id,
+      name: req.body.name,
+      email: req.body.email
+    };
+
+    res.status(200).json(users[index]);
+  }
+);
+
+// DELETE /api/users/:id - usunięcie użytkownika
+app.delete('/api/users/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const index = users.findIndex(u => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: 'Użytkownik nie istnieje' });
+  }
+
+  users.splice(index, 1);
+  res.status(204).send();
 });
-
-testRouter.get('/status', (req, res) => {
-  res.json({ routerStatus: 'OK' });
-});
-
-app.use('/api/router-test', testRouter);
 
 app.listen(port, () => {
   console.log(`Serwer działa na porcie ${port}`);
